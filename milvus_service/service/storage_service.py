@@ -20,6 +20,48 @@ from ability.storage.milvus_client import milvus_client
 settings = get_settings()
 
 
+class MetadataFieldModel(BaseModel):
+    """
+    元数据字段定义（用于请求模型中描述 Milvus 字段，SDK 内部会转换为 FieldSchema）
+
+    说明：
+    - 这是对 pymilvus.FieldSchema 的一个 Pydantic 友好封装；
+    - 调用方可以直接传入 dict 列表，Pydantic 会自动转换为本模型。
+    """
+
+    name: str = Field(..., description="字段名，例如 'content' / 'document_id' 等")
+    dtype: DataType = Field(
+        ...,
+        description="字段类型，对应 pymilvus.DataType，例如 DataType.VARCHAR / DataType.INT64",
+    )
+    description: str = Field(
+        default="",
+        description="字段描述信息，可选",
+    )
+    max_length: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="可变长字段的最大长度，例如 VARCHAR 字段的 max_length",
+    )
+    dim: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="向量字段维度（当 dtype 为 FLOAT_VECTOR / BINARY_VECTOR 时使用）",
+    )
+    is_primary: bool = Field(
+        default=False,
+        description="是否为主键字段，通常主键在 primary_field 中单独指定，这里一般为 False",
+    )
+    auto_id: bool = Field(
+        default=False,
+        description="是否由 Milvus 自动生成主键 ID，仅当 is_primary=True 时生效",
+    )
+    is_partition_key: bool = Field(
+        default=False,
+        description="是否为分区键字段，仅在需要分区键时设置为 True",
+    )
+
+
 class MilvusConnectionParams(BaseModel):
     """
     Milvus 连接配置（可选入参）
@@ -64,7 +106,7 @@ class CreateCollectionRequest(BaseModel):
     - dense_vector_field: 稠密向量字段名，例如 'vector'
     - sparse_vector_field: 稀疏向量字段名，例如 'sparse_vector'
     - primary_dtype: 主键字段类型
-    - metadata_fields: 额外的元数据字段定义列表（FieldSchema 数组）
+    - metadata_fields: 额外的元数据字段定义列表（MetadataFieldModel 数组，SDK 内部会转换为 FieldSchema）
     - varchar_max_length: VARCHAR 类型字段默认最大长度
     - dense_index_params: 稠密向量索引参数
     - sparse_index_params: 稀疏向量索引参数
@@ -101,9 +143,12 @@ class CreateCollectionRequest(BaseModel):
         default=DataType.INT64,
         description="主键字段类型，默认 INT64",
     )
-    metadata_fields: Optional[List[FieldSchema]] = Field(
+    metadata_fields: Optional[List[MetadataFieldModel]] = Field(
         default=None,
-        description="额外的元数据字段定义列表，例如 document_id/content/metadata 等",
+        description=(
+            "额外的元数据字段定义列表，例如 document_id/content/metadata 等；"
+            "每个元素为 MetadataFieldModel（或等价的 dict），SDK 内部会自动转换为 pymilvus.FieldSchema"
+        ),
     )
     varchar_max_length: int = Field(
         default=255,
@@ -211,6 +256,31 @@ class StorageService:
     """存储相关 service，封装 CollectionOperator / InsertOperator 等"""
 
     @staticmethod
+    def _to_milvus_field_schema(field: MetadataFieldModel) -> FieldSchema:
+        """
+        将 MetadataFieldModel 转换为 pymilvus.FieldSchema。
+
+        说明：
+        - 仅在 Service 层内部使用，对调用方透明；
+        - 尽量与 FieldSchema 的参数保持一致，只填充请求中显式提供的字段。
+        """
+        kwargs: Dict[str, Any] = {
+            "name": field.name,
+            "dtype": field.dtype,
+            "description": field.description,
+            "is_primary": field.is_primary,
+            "auto_id": field.auto_id,
+        }
+        if field.max_length is not None:
+            kwargs["max_length"] = field.max_length
+        if field.dim is not None:
+            kwargs["dim"] = field.dim
+        if field.is_partition_key:
+            kwargs["is_partition_key"] = field.is_partition_key
+
+        return FieldSchema(**kwargs)
+
+    @staticmethod
     def _apply_milvus_connection(params: Optional[MilvusConnectionParams]) -> None:
         """
         根据请求中提供的 Milvus 连接配置，动态更新全局 Milvus 客户端。
@@ -233,7 +303,16 @@ class StorageService:
         """创建集合"""
         StorageService._apply_milvus_connection(request.milvus_connection)
         collection_op = StorageFactory.create_operator("collection", config={})
-        kwargs = request.model_dump(exclude={"milvus_connection"})
+        # 先将除 metadata_fields / milvus_connection 以外的字段序列化
+        kwargs = request.model_dump(exclude={"milvus_connection", "metadata_fields"})
+
+        # 将 Pydantic 元数据字段模型转换为 pymilvus.FieldSchema 列表
+        if request.metadata_fields:
+            kwargs["metadata_fields"] = [
+                StorageService._to_milvus_field_schema(f)
+                for f in request.metadata_fields
+            ]
+
         # process 的第一个参数为 operation 类型
         return collection_op.process("create", **kwargs)
 

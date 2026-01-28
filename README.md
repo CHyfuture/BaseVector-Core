@@ -252,30 +252,24 @@ pip install sentence-transformers
 
 ```python
 from milvus_service import StorageService, CreateCollectionRequest
-from pymilvus import FieldSchema, DataType
+from pymilvus import DataType
 
 
 def ensure_collection():
-    fields = [
-        # 主键字段
-        FieldSchema(
-            name="id",
-            dtype=DataType.INT64,
-            is_primary=True,
-            auto_id=False,
-        ),
-        # 向量字段
-        FieldSchema(
-            name="vector",
-            dtype=DataType.FLOAT_VECTOR,
-            dim=768,  # 向量维度需与你的 embedding 模型一致
-        ),
-        # 文本字段
-        FieldSchema(
-            name="content",
-            dtype=DataType.VARCHAR,
-            max_length=65535,
-        ),
+    # 使用纯 Pydantic / JSON 可序列化的字段描述，SDK 内部会自动转换为 FieldSchema
+    metadata_fields = [
+        {
+            "name": "vector",
+            "dtype": DataType.FLOAT_VECTOR,
+            "dim": 768,  # 向量维度需与你的 embedding 模型一致
+            "description": "向量字段",
+        },
+        {
+            "name": "content",
+            "dtype": DataType.VARCHAR,
+            "max_length": 65535,
+            "description": "文档内容",
+        },
     ]
 
     req = CreateCollectionRequest(
@@ -285,7 +279,8 @@ def ensure_collection():
         auto_id=False,
         primary_field="id",
         dense_vector_field="vector",
-        metadata_fields=fields[1:],  # 除主键外的字段
+        # 除主键外的字段，使用上面的元数据字段描述列表
+        metadata_fields=metadata_fields,
     )
 
     StorageService.create_collection(req)
