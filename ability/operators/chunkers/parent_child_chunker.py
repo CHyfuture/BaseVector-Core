@@ -167,6 +167,10 @@ class ParentChildChunker(BaseChunker):
             )
             child_chunks.append(child_chunk)
 
+            # 已到达末尾，直接结束，避免 overlap 导致重复切片进入死循环
+            if end >= len(text):
+                break
+
             # 计算下一个块的起始位置（考虑重叠）
             start = end - self.child_overlap if self.child_overlap > 0 else end
             child_index += 1

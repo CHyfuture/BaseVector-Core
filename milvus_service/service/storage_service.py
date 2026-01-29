@@ -9,7 +9,14 @@ StorageService
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+try:
+    # Pydantic v2
+    from pydantic import BaseModel, ConfigDict, Field
+except ImportError:  # pragma: no cover
+    # Pydantic v1 fallback
+    from pydantic import BaseModel, Field
+
+    ConfigDict = None  # type: ignore[assignment,misc]
 from pymilvus import Collection, DataType, FieldSchema
 
 from ability.config import get_settings
@@ -126,6 +133,13 @@ class CreateCollectionRequest(BaseModel):
         description="本次创建集合要使用的 Milvus 连接配置，不填则使用全局默认配置",
     )
 
+    # Pydantic v2 会尝试为 FieldSchema 生成 schema；这里允许第三方类型以避免导入阶段失败
+    if ConfigDict is not None:  # Pydantic v2
+        model_config = ConfigDict(arbitrary_types_allowed=True)
+    else:  # Pydantic v1
+        class Config:  # noqa: D106
+            arbitrary_types_allowed = True
+
 
 class DeleteCollectionRequest(BaseModel):
     """删除集合请求"""
@@ -233,7 +247,11 @@ class StorageService:
         """创建集合"""
         StorageService._apply_milvus_connection(request.milvus_connection)
         collection_op = StorageFactory.create_operator("collection", config={})
-        kwargs = request.model_dump(exclude={"milvus_connection"})
+        # 注意：CreateCollectionRequest 中包含 FieldSchema（第三方类型）。
+        # 在 Pydantic v2 的某些环境下，对包含 arbitrary type 的模型调用 model_dump 可能触发序列化异常。
+        # 这里直接使用实例字典，避免序列化阶段失败。
+        kwargs = dict(request.__dict__)
+        kwargs.pop("milvus_connection", None)
         # process 的第一个参数为 operation 类型
         return collection_op.process("create", **kwargs)
 
@@ -246,6 +264,11 @@ class StorageService:
         collection_op.process("delete", **kwargs)
 
     @staticmethod
+    def drop_collection(collection_name: str) -> None:
+        """删除集合（兼容别名：测试/示例中常用 drop_collection）"""
+        StorageService.delete_collection(DeleteCollectionRequest(collection_name=collection_name))
+
+    @staticmethod
     def list_collections(request: Optional[ListCollectionsRequest] = None) -> List[str]:
         """列出所有集合（当前不区分租户）"""
         if request is not None:
@@ -254,8 +277,10 @@ class StorageService:
         return collection_op.process("list")
 
     @staticmethod
-    def get_collection(request: GetCollectionRequest) -> Collection:
+    def get_collection(request: GetCollectionRequest | str) -> Collection:
         """获取集合对象"""
+        if isinstance(request, str):
+            request = GetCollectionRequest(collection_name=request)
         StorageService._apply_milvus_connection(request.milvus_connection)
         collection_op = StorageFactory.create_operator("collection", config={})
         kwargs = request.model_dump(exclude={"milvus_connection"})
@@ -268,6 +293,11 @@ class StorageService:
         collection_op = StorageFactory.create_operator("collection", config={})
         kwargs = request.model_dump(exclude={"milvus_connection"})
         return bool(collection_op.process("exists", **kwargs))
+
+    @staticmethod
+    def collection_exists(collection_name: str) -> bool:
+        """检查集合是否存在（兼容别名：测试/示例中常用 collection_exists）"""
+        return StorageService.exists_collection(ExistsCollectionRequest(collection_name=collection_name))
 
     @staticmethod
     def insert(request: InsertRequest) -> List[int]:

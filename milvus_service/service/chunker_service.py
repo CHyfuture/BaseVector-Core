@@ -42,12 +42,10 @@ class ChunkRequest(BaseModel):
     )
     chunk_size: Optional[int] = Field(
         default=None,
-        ge=1,
         description="切片大小（字符数），不填则使用全局配置 Settings.CHUNK_SIZE（默认值：512）",
     )
     chunk_overlap: Optional[int] = Field(
         default=None,
-        ge=0,
         description="相邻切片重叠字符数，不填则使用全局配置 Settings.CHUNK_OVERLAP（默认值：50）",
     )
     extra_config: Optional[Dict[str, Any]] = Field(
@@ -102,10 +100,18 @@ class ChunkerService:
                 每个元素对应一个切片块，包含：
                 - content / chunk_index / start_index / end_index / metadata / parent_chunk_id
         """
-        # 构造 chunker 配置
+        # 构造 chunker 配置（对非法入参做兜底修正，避免在请求模型阶段直接抛错）
+        chunk_size = request.chunk_size
+        if chunk_size is None or chunk_size <= 0:
+            chunk_size = settings.CHUNK_SIZE
+
+        chunk_overlap = request.chunk_overlap
+        if chunk_overlap is None or chunk_overlap < 0:
+            chunk_overlap = settings.CHUNK_OVERLAP
+
         config: Dict[str, Any] = {
-            "chunk_size": request.chunk_size or settings.CHUNK_SIZE,
-            "chunk_overlap": request.chunk_overlap or settings.CHUNK_OVERLAP,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
         }
         if request.extra_config:
             config.update(request.extra_config)
