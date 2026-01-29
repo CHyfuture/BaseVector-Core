@@ -1389,7 +1389,7 @@ sparse_index_params = {
 **返回参数**:
 - `Collection`: Milvus集合对象
 
-**示例（直接使用 `milvus_client`，传入 FieldSchema 列表）**:
+**示例**:
 
 ```python
 from ability.storage.milvus_client import milvus_client
@@ -1446,28 +1446,6 @@ collection = milvus_client.create_collection(
    metadata_fields=metadata_fields
 )
 ```
-
-> **通过 Service 层创建集合时的元数据字段说明**  
-> 如果你不是直接调用 `ability.storage.milvus_client.create_collection`，而是通过 `milvus_service.StorageService.create_collection(CreateCollectionRequest)` 来创建集合，  
-> 那么 `CreateCollectionRequest.metadata_fields` 接受的是 **Pydantic 模型 / 普通 dict 列表**（SDK 内部会自动转换为 `FieldSchema`），典型结构如下：  
->
-> ```python
-> metadata_fields = [
->     {
->         "name": "vector",
->         "dtype": DataType.FLOAT_VECTOR,
->         "dim": 768,
->         "description": "向量字段",
->     },
->     {
->         "name": "content",
->         "dtype": DataType.VARCHAR,
->         "max_length": 65535,
->         "description": "文档内容",
->     },
-> ]
-> ```  
-> 这种写法完全 Pydantic 友好，不会依赖第三方类型的 schema 生成，更适合在 FastAPI 等框架中作为请求体模型使用。
 
 #### 插入数据
 
