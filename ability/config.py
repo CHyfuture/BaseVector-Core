@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # ==================== Milvus 向量数据库配置 ====================
     # Milvus 服务器主机地址
     # 用于连接 Milvus 向量数据库，SemanticRetriever 需要此配置
-    MILVUS_HOST: str = "localhost"
+    MILVUS_HOST: str = "192.168.31.51"
 
     # Milvus 服务器端口号
     # 默认端口为 19530，根据实际部署情况调整
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
 
     # Milvus 数据库名称
     # 指定要使用的 Milvus 数据库，默认为 "default"
-    MILVUS_DB_NAME: str = "default"
+    MILVUS_DB_NAME: str = "base_database_vector"
 
     # Milvus 索引类型
     # 可选值: IVF_FLAT, IVF_SQ8, IVF_PQ, HNSW, FLAT 等
@@ -109,7 +109,7 @@ class Settings(BaseSettings):
     # semantic: 基于语义相似度切分，保持语义完整性
     # title: 基于标题层级切分，适合结构化文档
     # parent_child: 基于父子关系切分，适合层次化文档
-    CHUNK_STRATEGY: str = "fixed"
+    CHUNK_STRATEGY: str = "parent_child"
 
     # ==================== 检索配置 ====================
     # 检索结果数量（Top-K）
