@@ -5,10 +5,10 @@ from pymilvus import DataType
 
 from ability.config import get_settings
 from ability.operators.retrievers.base_retriever import (
-    RETRIEVAL_OUTPUT_FIELDS,
     BaseRetriever,
     RetrievalResult,
     metadata_from_result,
+    resolve_output_fields,
 )
 from ability.storage.milvus_client import milvus_client
 from ability.utils.logger import logger
@@ -93,6 +93,12 @@ class SemanticRetriever(BaseRetriever):
         # 向量字段名：若为默认 'vector'，则从集合 schema 自动解析 FLOAT_VECTOR 字段（如 vector_content）
         anns_field = _resolve_anns_field(collection_name, anns_field)
 
+        # 动态解析本次要返回的标量字段（支持 kwargs.output_fields 或按集合 schema）
+        output_fields = resolve_output_fields(
+            collection_name,
+            kwargs.get("output_fields"),
+        )
+
         # 确保向量格式正确
         if isinstance(query_vector, list) and len(query_vector) > 0:
             if isinstance(query_vector[0], list):
@@ -117,7 +123,7 @@ class SemanticRetriever(BaseRetriever):
                 vectors=[query_vector],
                 top_k=top_k,
                 expr=expr,
-                output_fields=RETRIEVAL_OUTPUT_FIELDS,
+                output_fields=output_fields,
                 anns_field=anns_field,
             )
         except ValueError as e:

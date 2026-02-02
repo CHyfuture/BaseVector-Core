@@ -183,6 +183,7 @@ class MilvusClient:
                     "schema_fields": field_names,
                     "primary_field": primary_field,
                     "dense_vector_field": dense_vector_field,
+                    "sparse_vector_field": sparse_vector_field,
                     "records": [],
                 }
             # 兼容返回值：上层一般不依赖 Collection 的具体行为
@@ -453,6 +454,49 @@ class MilvusClient:
             return collection
 
         raise ValueError(f"Collection {collection_name} does not exist")
+
+    def get_scalar_fields(self, collection_name: str) -> List[str]:
+        """
+        根据集合 schema 获取标量字段名列表（排除主键与向量字段），用于检索时动态 output_fields。
+
+        Args:
+            collection_name: 集合名称
+
+        Returns:
+            标量字段名列表（不含 id、向量字段）
+
+        Raises:
+            ValueError: 集合不存在时
+        """
+        if not self.connected:
+            self.connect()
+        if self._use_emulator:
+            if collection_name not in self._emulator_store:
+                raise ValueError(f"Collection {collection_name} does not exist")
+            store = self._emulator_store[collection_name]
+            schema_fields = store.get("schema_fields") or []
+            primary = store.get("primary_field") or "id"
+            dense = store.get("dense_vector_field")
+            sparse = store.get("sparse_vector_field")
+            exclude = {primary}
+            if dense:
+                exclude.add(dense)
+            if sparse:
+                exclude.add(sparse)
+            return [f for f in schema_fields if f not in exclude]
+
+        collection = self.get_collection(collection_name)
+        scalar = []
+        for field in collection.schema.fields:
+            if getattr(field, "is_primary", False):
+                continue
+            dtype = getattr(field, "dtype", None)
+            if dtype == DataType.FLOAT_VECTOR:
+                continue
+            if hasattr(DataType, "SPARSE_FLOAT_VECTOR") and dtype == DataType.SPARSE_FLOAT_VECTOR:
+                continue
+            scalar.append(field.name)
+        return scalar
 
     def insert(
         self,

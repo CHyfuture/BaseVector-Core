@@ -107,6 +107,10 @@ class BaseSearchRequest(BaseModel):
         default=None,
         description="Milvus 集合名称。不填时使用 MILVUS_COLLECTION_TEMPLATE + tenant_id 生成；填写时直接使用该集合名",
     )
+    output_fields: Optional[List[str]] = Field(
+        default=None,
+        description="本次检索要返回的标量字段列表（不含 id/向量字段）。不填则按集合 schema 动态解析；填写则仅返回指定字段",
+    )
 
 
 class SemanticSearchRequest(BaseSearchRequest):
@@ -249,6 +253,8 @@ class RetrieverService:
             kwargs["search_params"] = request.milvus_search_params
         if request.collection_name is not None:
             kwargs["collection_name"] = request.collection_name
+        if request.output_fields is not None:
+            kwargs["output_fields"] = request.output_fields
         return kwargs
     
     @staticmethod

@@ -3,10 +3,10 @@ from typing import Any, Dict, List, Optional
 
 from ability.config import get_settings
 from ability.operators.retrievers.base_retriever import (
-    RETRIEVAL_OUTPUT_FIELDS,
     BaseRetriever,
     RetrievalResult,
     metadata_from_result,
+    resolve_output_fields,
 )
 from ability.storage.milvus_client import milvus_client
 from ability.utils.logger import logger
@@ -143,13 +143,17 @@ class TextMatchRetriever(BaseRetriever):
 
         # 3. 使用Milvus查询
         try:
+            output_fields = resolve_output_fields(
+                collection_name,
+                kwargs.get("output_fields"),
+            )
             collection = milvus_client.get_collection(collection_name)
             collection.load()
 
-            # 使用query方法查询所有匹配的文档（与集合 schema 一致）
+            # 使用query方法查询所有匹配的文档（与集合 schema 一致，动态 output_fields）
             query_results = collection.query(
                 expr=expr,
-                output_fields=["id", *RETRIEVAL_OUTPUT_FIELDS],
+                output_fields=["id", *output_fields],
                 limit=top_k * 2,  # 获取更多候选结果以便排序
             )
 

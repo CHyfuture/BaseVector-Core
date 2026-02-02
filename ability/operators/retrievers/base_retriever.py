@@ -5,10 +5,11 @@ from typing import Any, Dict, List, Optional, Union
 
 from ability.config import get_settings
 from ability.operators.base import BaseOperator
+from ability.storage.milvus_client import milvus_client
 
 settings = get_settings()
 
-# 与插入集合字段对齐：检索时请求的标量字段（不含 id 与向量字段）
+# 与插入集合字段对齐：检索时请求的标量字段（不含 id 与向量字段），在无法动态获取集合 schema 时作为兜底
 RETRIEVAL_OUTPUT_FIELDS: List[str] = [
     "doc_id",
     "chunk_index",
@@ -30,25 +31,26 @@ RETRIEVAL_OUTPUT_FIELDS: List[str] = [
 ]
 
 
+def resolve_output_fields(
+    collection_name: str,
+    user_output_fields: Optional[List[str]] = None,
+) -> List[str]:
+    """
+    解析本次检索应请求的标量字段列表。
+    优先使用调用方传入的 user_output_fields；否则从集合 schema 动态获取标量字段；失败时兜底为 RETRIEVAL_OUTPUT_FIELDS。
+    """
+    if user_output_fields is not None and len(user_output_fields) > 0:
+        return list(user_output_fields)
+    try:
+        return milvus_client.get_scalar_fields(collection_name)
+    except Exception:
+        return list(RETRIEVAL_OUTPUT_FIELDS)
+
+
 def metadata_from_result(result: Dict[str, Any]) -> Dict[str, Any]:
-    """从 Milvus 单条结果构建 RetrievalResult.metadata（与集合 schema 一致）。"""
-    return {
-        "chunk_index": result.get("chunk_index"),
-        "parent_chunk_id": result.get("parent_chunk_id"),
-        "chunk_type": result.get("chunk_type"),
-        "position_start": result.get("position_start"),
-        "position_end": result.get("position_end"),
-        "section_title": result.get("section_title"),
-        "section_path": result.get("section_path"),
-        "page": result.get("page"),
-        "abstract_text": result.get("abstract_text"),
-        "keywords_text": result.get("keywords_text"),
-        "summary_text": result.get("summary_text"),
-        "title": result.get("title"),
-        "authors": result.get("authors"),
-        "institutions": result.get("institutions"),
-        "tags": result.get("tags"),
-    }
+    """从 Milvus 单条结果构建 RetrievalResult.metadata，按 result 中实际返回的字段动态生成（排除 id/distance/score）。"""
+    exclude = {"id", "distance", "score"}
+    return {k: v for k, v in result.items() if k not in exclude}
 
 
 class RetrievalResult:
@@ -176,6 +178,7 @@ class BaseRetriever(BaseOperator):
             **kwargs: 额外的检索参数
                 - rerank_enabled: 是否启用重排序（覆盖配置）
                 - similarity_threshold: 相似度阈值（覆盖配置）
+                - output_fields: 本次检索要返回的标量字段列表（可选）；不传则按集合 schema 动态解析
 
         Returns:
             检索结果列表（已应用重排序和阈值过滤）
