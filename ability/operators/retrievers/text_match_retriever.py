@@ -128,13 +128,15 @@ class TextMatchRetriever(BaseRetriever):
             logger.warning("Query text is empty")
             return []
 
-        # 1. 确定集合名称
-        if tenant_id:
-            collection_name = settings.MILVUS_COLLECTION_TEMPLATE.format(tenant_id=tenant_id)
-        else:
-            collection_name = settings.MILVUS_COLLECTION_TEMPLATE.format(
-                tenant_id=settings.DEFAULT_TENANT_ID
-            )
+        # 1. 确定集合名称：调用方传入优先，否则按模板 + tenant_id
+        collection_name = kwargs.get("collection_name")
+        if not collection_name:
+            if tenant_id:
+                collection_name = settings.MILVUS_COLLECTION_TEMPLATE.format(tenant_id=tenant_id)
+            else:
+                collection_name = settings.MILVUS_COLLECTION_TEMPLATE.format(
+                    tenant_id=settings.DEFAULT_TENANT_ID
+                )
 
         # 2. 构建过滤表达式
         expr = self._build_match_expression(query)
