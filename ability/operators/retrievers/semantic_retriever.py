@@ -90,6 +90,11 @@ class SemanticRetriever(BaseRetriever):
             else:
                 expr = str(user_expr)
 
+        # 4. 检索返回字段：调用方传入优先，否则用默认（与常见 schema 一致）
+        output_fields = kwargs.get("output_fields")
+        if not output_fields:
+            output_fields = ["document_id", "tenant_id", "content", "metadata", "chunk_index", "parent_chunk_id"]
+
         # 在Milvus中检索
         try:
             search_results = milvus_client.search(
@@ -97,7 +102,7 @@ class SemanticRetriever(BaseRetriever):
                 vectors=[query_vector],
                 top_k=top_k,
                 expr=expr,
-                output_fields=["document_id", "tenant_id", "content", "metadata", "chunk_index", "parent_chunk_id"],
+                output_fields=output_fields,
                 anns_field=anns_field,
             )
         except ValueError as e:
@@ -119,14 +124,22 @@ class SemanticRetriever(BaseRetriever):
                 metadata_dict = {}
 
             # 创建检索结果
-            # 处理None值：如果字段值为None，使用默认值
+            # 处理None值：如果字段值为None，使用默认值；兼容 document_id / doc_id
             content = result.get("content")
             if content is None:
                 content = ""
-            
-            document_id = result.get("document_id")
+
+            document_id = result.get("document_id") or result.get("doc_id")
+            if document_id is None and metadata_dict:
+                document_id = metadata_dict.get("doc_id") or metadata_dict.get("document_id")
             if document_id is None:
                 document_id = 0
+            # RetrievalResult.document_id 为 int，若为 str（如 doc_id 存标题）则转 int 或 hash
+            if not isinstance(document_id, int):
+                try:
+                    document_id = int(document_id)
+                except (TypeError, ValueError):
+                    document_id = hash(document_id) & 0x7FFFFFFF
             
             score = result.get("score")
             if score is None:

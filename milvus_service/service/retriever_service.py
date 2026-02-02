@@ -124,6 +124,10 @@ class SemanticSearchRequest(BaseSearchRequest):
         default=None,
         description="额外的 Milvus 过滤表达式，例如 'chunk_index < 3'",
     )
+    output_fields: Optional[List[str]] = Field(
+        default=None,
+        description="Milvus 检索返回的字段列表。不填时使用默认 [document_id, tenant_id, content, metadata, chunk_index, parent_chunk_id]；若集合 schema 不同（如使用 doc_id、无 tenant_id），请传入与集合一致的字段名列表",
+    )
 
 
 class KeywordSearchRequest(BaseSearchRequest):
@@ -285,6 +289,8 @@ class RetrieverService:
         )
         if request.collection_name is not None:
             kwargs["collection_name"] = request.collection_name
+        if request.output_fields is not None:
+            kwargs["output_fields"] = request.output_fields
 
         results = retriever.process(
             query=request.query,

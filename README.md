@@ -63,7 +63,7 @@ BaseVector-Core 是一个**纯 Python SDK**，围绕 Milvus 向量数据库，�
 在你的业务项目中直接从 Git 安装：
 
 ```bash
-pip install "git+https://github.com/CHyfuture/BaseVector-Core.git@main"
+pip install "git+ssh://git@github.com/CHyfuture/BaseVector-Core.git"
 ```
 
 > 如需指定分支或 tag，将 `@main` 替换为对应名称即可。
