@@ -8,6 +8,48 @@ from ability.operators.base import BaseOperator
 
 settings = get_settings()
 
+# 与插入集合字段对齐：检索时请求的标量字段（不含 id 与向量字段）
+RETRIEVAL_OUTPUT_FIELDS: List[str] = [
+    "doc_id",
+    "chunk_index",
+    "parent_chunk_id",
+    "chunk_type",
+    "position_start",
+    "position_end",
+    "section_title",
+    "section_path",
+    "page",
+    "content",
+    "abstract_text",
+    "keywords_text",
+    "summary_text",
+    "title",
+    "authors",
+    "institutions",
+    "tags",
+]
+
+
+def metadata_from_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    """从 Milvus 单条结果构建 RetrievalResult.metadata（与集合 schema 一致）。"""
+    return {
+        "chunk_index": result.get("chunk_index"),
+        "parent_chunk_id": result.get("parent_chunk_id"),
+        "chunk_type": result.get("chunk_type"),
+        "position_start": result.get("position_start"),
+        "position_end": result.get("position_end"),
+        "section_title": result.get("section_title"),
+        "section_path": result.get("section_path"),
+        "page": result.get("page"),
+        "abstract_text": result.get("abstract_text"),
+        "keywords_text": result.get("keywords_text"),
+        "summary_text": result.get("summary_text"),
+        "title": result.get("title"),
+        "authors": result.get("authors"),
+        "institutions": result.get("institutions"),
+        "tags": result.get("tags"),
+    }
+
 
 class RetrievalResult:
     """检索结果数据类"""
