@@ -1,7 +1,7 @@
 """
 检索器基类
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ability.config import get_settings
 from ability.operators.base import BaseOperator
@@ -57,7 +57,7 @@ class RetrievalResult:
     def __init__(
         self,
         chunk_id: int,
-        document_id: int,
+        document_id: Union[int, str],
         content: str,
         score: float,
         metadata: Optional[Dict[str, Any]] = None,
@@ -67,7 +67,7 @@ class RetrievalResult:
 
         Args:
             chunk_id: 块ID
-            document_id: 文档ID
+            document_id: 文档ID（可为整数或字符串，如论文标题）
             content: 块内容
             score: 相似度分数
             metadata: 元数据

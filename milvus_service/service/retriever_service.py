@@ -6,7 +6,7 @@ RetrieverService
 - 所需入参模型
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -188,7 +188,7 @@ class RetrievalResultDTO(BaseModel):
     """检索结果 DTO，与 RetrievalResult 基本等价，但便于序列化"""
 
     chunk_id: int = Field(..., description="块 ID")
-    document_id: int = Field(..., description="文档 ID")
+    document_id: Union[int, str] = Field(..., description="文档 ID（可为整数或字符串，如论文标题）")
     content: str = Field(..., description="文本内容")
     score: float = Field(..., description="相似度分数（0-1 或重排序后的得分）")
     metadata: Dict[str, Any] = Field(
