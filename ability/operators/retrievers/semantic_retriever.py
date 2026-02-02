@@ -94,7 +94,7 @@ class SemanticRetriever(BaseRetriever):
                 vectors=[query_vector],
                 top_k=top_k,
                 expr=expr,
-                output_fields=["doc_id", "content", "metadata", "chunk_index", "parent_chunk_id"],
+                output_fields=["doc_id", "content", "chunk_index", "parent_chunk_id"],
                 anns_field=anns_field,
             )
         except ValueError as e:
