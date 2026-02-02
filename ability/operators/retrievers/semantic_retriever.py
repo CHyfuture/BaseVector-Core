@@ -1,6 +1,8 @@
 """语义检索器，基于Milvus向量检索"""
 from typing import Any, Dict, List, Optional
 
+from pymilvus import DataType
+
 from ability.config import get_settings
 from ability.operators.retrievers.base_retriever import (
     RETRIEVAL_OUTPUT_FIELDS,
@@ -12,6 +14,20 @@ from ability.storage.milvus_client import milvus_client
 from ability.utils.logger import logger
 
 settings = get_settings()
+
+
+def _resolve_anns_field(collection_name: str, anns_field: str) -> str:
+    """当 anns_field 为默认 'vector' 时，从集合 schema 解析实际向量字段名。"""
+    if anns_field and anns_field != "vector":
+        return anns_field
+    try:
+        collection = milvus_client.get_collection(collection_name)
+        for field in collection.schema.fields:
+            if field.dtype == DataType.FLOAT_VECTOR:
+                return field.name
+    except Exception:
+        pass
+    return "vector"
 
 
 class SemanticRetriever(BaseRetriever):
@@ -66,13 +82,6 @@ class SemanticRetriever(BaseRetriever):
         
         anns_field = kwargs.get("anns_field", "vector")
 
-        # 确保向量格式正确
-        if isinstance(query_vector, list) and len(query_vector) > 0:
-            if isinstance(query_vector[0], list):
-                query_vector = query_vector[0]
-        if hasattr(query_vector, "tolist"):
-            query_vector = query_vector.tolist()
-
         # 2. 确定集合名称：调用方传入优先，否则按模板 + tenant_id
         collection_name = kwargs.get("collection_name")
         if not collection_name:
@@ -80,6 +89,16 @@ class SemanticRetriever(BaseRetriever):
                 collection_name = settings.MILVUS_COLLECTION_TEMPLATE.format(tenant_id=tenant_id)
             else:
                 collection_name = settings.MILVUS_COLLECTION_TEMPLATE.format(tenant_id=settings.DEFAULT_TENANT_ID)
+
+        # 向量字段名：若为默认 'vector'，则从集合 schema 自动解析 FLOAT_VECTOR 字段（如 vector_content）
+        anns_field = _resolve_anns_field(collection_name, anns_field)
+
+        # 确保向量格式正确
+        if isinstance(query_vector, list) and len(query_vector) > 0:
+            if isinstance(query_vector[0], list):
+                query_vector = query_vector[0]
+        if hasattr(query_vector, "tolist"):
+            query_vector = query_vector.tolist()
 
         # 3. 构建过滤表达式（仅支持用户传入 milvus_expr）
         expr = None
