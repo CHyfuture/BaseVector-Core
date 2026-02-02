@@ -1,9 +1,13 @@
 """短语匹配检索器，支持短语精确匹配"""
-import json
 from typing import Any, Dict, List, Optional
 
 from ability.config import get_settings
-from ability.operators.retrievers.base_retriever import BaseRetriever, RetrievalResult
+from ability.operators.retrievers.base_retriever import (
+    RETRIEVAL_OUTPUT_FIELDS,
+    BaseRetriever,
+    RetrievalResult,
+    metadata_from_result,
+)
 from ability.storage.milvus_client import milvus_client
 from ability.utils.logger import logger
 
@@ -130,26 +134,17 @@ class PhraseMatchRetriever(BaseRetriever):
             )
 
         # 2. 构建过滤表达式
-        phrase_expr = self._build_phrase_expression(query)
-
-        expr = None
-        if tenant_id:
-            expr = f'tenant_id == "{tenant_id}"'
-
-        if expr:
-            expr = f"({expr}) && ({phrase_expr})"
-        else:
-            expr = phrase_expr
+        expr = self._build_phrase_expression(query)
 
         # 3. 使用Milvus查询
         try:
             collection = milvus_client.get_collection(collection_name)
             collection.load()
 
-            # 使用query方法查询所有匹配的文档
+            # 使用query方法查询所有匹配的文档（与集合 schema 一致）
             query_results = collection.query(
                 expr=expr,
-                output_fields=["id", "document_id", "tenant_id", "content", "metadata", "chunk_index", "parent_chunk_id"],
+                output_fields=["id", *RETRIEVAL_OUTPUT_FIELDS],
                 limit=top_k * 2,  # 获取更多候选结果以便排序
             )
 
@@ -166,27 +161,14 @@ class PhraseMatchRetriever(BaseRetriever):
                 score = self._calculate_phrase_score(query, content)
 
                 if score > 0:
-                    # 解析metadata
-                    metadata_str = result.get("metadata", "{}")
-                    try:
-                        metadata_dict = (
-                            json.loads(metadata_str) if isinstance(metadata_str, str) else (metadata_str or {})
-                        )
-                    except:
-                        metadata_dict = {}
-
+                    doc_id = result.get("doc_id") or result.get("document_id", 0)
                     scored_results.append(
                         {
                             "chunk_id": result.get("id"),
-                            "document_id": result.get("document_id", 0),
+                            "document_id": doc_id,
                             "content": content,
                             "score": score,
-                            "metadata": {
-                                "chunk_index": result.get("chunk_index"),
-                                "parent_chunk_id": result.get("parent_chunk_id"),
-                                "tenant_id": result.get("tenant_id"),
-                                **metadata_dict,
-                            },
+                            "metadata": metadata_from_result(result),
                         }
                     )
 

@@ -1,9 +1,13 @@
 """语义检索器，基于Milvus向量检索"""
-import json
 from typing import Any, Dict, List, Optional
 
 from ability.config import get_settings
-from ability.operators.retrievers.base_retriever import BaseRetriever, RetrievalResult
+from ability.operators.retrievers.base_retriever import (
+    RETRIEVAL_OUTPUT_FIELDS,
+    BaseRetriever,
+    RetrievalResult,
+    metadata_from_result,
+)
 from ability.storage.milvus_client import milvus_client
 from ability.utils.logger import logger
 
@@ -94,51 +98,38 @@ class SemanticRetriever(BaseRetriever):
                 vectors=[query_vector],
                 top_k=top_k,
                 expr=expr,
-                output_fields=["doc_id", "content", "chunk_index", "parent_chunk_id"],
+                output_fields=RETRIEVAL_OUTPUT_FIELDS,
                 anns_field=anns_field,
             )
         except ValueError as e:
             logger.warning(f"Collection {collection_name} does not exist: {str(e)}")
             return []
 
-        # 构建检索结果
+        # 构建检索结果（与集合 schema 一致）
         results = []
         for result in search_results:
             chunk_id = result.get("id")
             if not chunk_id:
                 continue
 
-            # 解析metadata JSON字符串
-            metadata_str = result.get("metadata", "{}")
-            try:
-                metadata_dict = json.loads(metadata_str) if isinstance(metadata_str, str) else (metadata_str or {})
-            except:
-                metadata_dict = {}
-
-            # 创建检索结果
-            # 处理None值：如果字段值为None，使用默认值
             content = result.get("content")
             if content is None:
                 content = ""
-            
+
             document_id = result.get("doc_id") or result.get("document_id")
             if document_id is None:
                 document_id = 0
-            
+
             score = result.get("score")
             if score is None:
                 score = 0.0
-            
+
             retrieval_result = RetrievalResult(
                 chunk_id=chunk_id,
                 document_id=document_id,
                 content=content,
                 score=score,
-                metadata={
-                    "chunk_index": result.get("chunk_index"),
-                    "parent_chunk_id": result.get("parent_chunk_id"),
-                    **metadata_dict,
-                },
+                metadata=metadata_from_result(result),
             )
             results.append(retrieval_result)
 
