@@ -112,6 +112,10 @@ class SemanticSearchRequest(BaseSearchRequest):
         ...,
         description="查询向量，必须与集合中存储的向量维度一致，需由上层模型生成",
     )
+    collection_name: Optional[str] = Field(
+        default=None,
+        description="Milvus 集合名称。不填时使用 MILVUS_COLLECTION_TEMPLATE + tenant_id 生成；填写时直接使用该集合名",
+    )
     anns_field: str = Field(
         default="vector",
         description="Milvus 中用于向量检索的字段名，默认 'vector'",
@@ -279,6 +283,8 @@ class RetrieverService:
                 "milvus_expr": request.milvus_expr,
             }
         )
+        if request.collection_name is not None:
+            kwargs["collection_name"] = request.collection_name
 
         results = retriever.process(
             query=request.query,
