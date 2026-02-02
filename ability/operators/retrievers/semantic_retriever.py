@@ -77,11 +77,8 @@ class SemanticRetriever(BaseRetriever):
             else:
                 collection_name = settings.MILVUS_COLLECTION_TEMPLATE.format(tenant_id=settings.DEFAULT_TENANT_ID)
 
-        # 3. 构建过滤表达式
+        # 3. 构建过滤表达式（仅支持用户传入 milvus_expr）
         expr = None
-        if tenant_id:
-            expr = f'tenant_id == "{tenant_id}"'
-
         # 支持用户传入 milvus_expr（会在Service层做校验）
         user_expr = kwargs.get("milvus_expr")
         if user_expr:
@@ -97,7 +94,7 @@ class SemanticRetriever(BaseRetriever):
                 vectors=[query_vector],
                 top_k=top_k,
                 expr=expr,
-                output_fields=["doc_id", "tenant_id", "content", "metadata", "chunk_index", "parent_chunk_id"],
+                output_fields=["doc_id", "content", "metadata", "chunk_index", "parent_chunk_id"],
                 anns_field=anns_field,
             )
         except ValueError as e:
@@ -140,7 +137,6 @@ class SemanticRetriever(BaseRetriever):
                 metadata={
                     "chunk_index": result.get("chunk_index"),
                     "parent_chunk_id": result.get("parent_chunk_id"),
-                    "tenant_id": result.get("tenant_id"),
                     **metadata_dict,
                 },
             )
