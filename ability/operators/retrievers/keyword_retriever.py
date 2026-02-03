@@ -95,6 +95,11 @@ class KeywordRetriever(BaseRetriever):
         # 3. 构建过滤表达式
         expr = None
 
+        # 3.1 先接入上游传入的 milvus_expr（例如 'chunk_type == "child"'）
+        user_expr = kwargs.get("milvus_expr")
+        if user_expr:
+            expr = str(user_expr)
+
         # 构建关键词过滤表达式（使用LIKE操作符）
         keyword_filters = []
         for token in query_tokens:
@@ -106,6 +111,7 @@ class KeywordRetriever(BaseRetriever):
         if keyword_filters:
             keyword_expr = " || ".join(f"({f})" for f in keyword_filters)
             if expr:
+                # 同时满足上游 milvus_expr 与关键词匹配条件
                 expr = f"({expr}) && ({keyword_expr})"
             else:
                 expr = keyword_expr

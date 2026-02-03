@@ -180,6 +180,13 @@ KEYWORD_FTS_LANGUAGE=simple
       - `0.5 ~ 0.7`：过滤掉明显不相关的结果；
       - `0.7 ~ 0.9`：只保留非常相关的结果。
     - 注意：不同检索模式（语义 / 关键词 / 混合）分数分布可能不同，需要结合业务调试。
+  - **`milvus_expr`（请求级参数）**：
+    - **不是环境变量**，而是各检索请求（`SemanticSearchRequest` / `KeywordSearchRequest` / `HybridSearchRequest` / `FulltextSearchRequest` / `TextMatchSearchRequest` / `PhraseMatchSearchRequest`）上的字段。
+    - 用于传入 Milvus 的过滤表达式，例如：
+      - 只检索子块：`milvus_expr="chunk_type == 'child'"`
+      - 只看部分文档：`milvus_expr="document_id > 100"`
+      - 组合条件：`milvus_expr="chunk_type == 'child' && page <= 3"`
+    - 内部会先通过 `validate_milvus_expr()` 做安全校验，然后在所有检索模式中统一生效。
   - **`RETRIEVAL_CANDIDATE_MULTIPLIER`**：
     - 启用重排时，先从 Milvus 拿 `TOP_K * RETRIEVAL_CANDIDATE_MULTIPLIER` 条候选，再做重排。
     - 例如：`TOP_K=10` 且 `RETRIEVAL_CANDIDATE_MULTIPLIER=2`，则先拉 20 条，重排后返回前 10 条。
@@ -377,6 +384,9 @@ def search(query: str):
         # rerank_enabled=True,
         # similarity_threshold=0.3,
         # milvus_search_params={"metric_type": "IP", "params": {"nprobe": 16}},
+        # 可选：使用 Milvus 表达式做过滤（支持所有检索模式）
+        # 例如只检索子块：
+        # milvus_expr="chunk_type == 'child'",
     )
 
     results = RetrieverService.semantic_search(req)
@@ -457,7 +467,10 @@ def keyword_search(query: str):
     req = KeywordSearchRequest(
         query=query,
         top_k=5,
-        # extra_params 可透传给具体检索器
+        # 使用 milvus_expr 进行 Milvus 侧过滤（推荐写法）
+        milvus_expr="chunk_type == 'child'",
+        # extra_params 可透传给具体检索器，老版本也支持在这里传 milvus_expr
+        # extra_params={"min_match_count": 1, "milvus_expr": "chunk_type == 'child'"},
         extra_params={"min_match_count": 1},
     )
     return RetrieverService.keyword_search(req)
@@ -468,6 +481,8 @@ def hybrid_search(query: str, query_vector: list[float]):
         query=query,
         query_vector=query_vector,
         top_k=5,
+        # 对语义 + 关键词两路统一做 Milvus 过滤
+        milvus_expr="chunk_type == 'child'",
         extra_params={
             "semantic_weight": 0.7,
             "keyword_weight": 0.3,
@@ -475,6 +490,10 @@ def hybrid_search(query: str, query_vector: list[float]):
     )
     return RetrieverService.hybrid_search(req)
 ```
+
+> 提示：  
+> - `milvus_expr` 会在所有检索模式中统一生效（语义 / 关键词 / 混合 / 全文 / 文本匹配 / 短语匹配）。  
+> - 表达式是在 Milvus 侧执行的结构化过滤，适合做「按字段过滤 + 文本检索」的组合场景。
 
 ---
 

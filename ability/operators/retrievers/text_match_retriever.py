@@ -139,7 +139,18 @@ class TextMatchRetriever(BaseRetriever):
                 )
 
         # 2. 构建过滤表达式
-        expr = self._build_match_expression(query)
+        # 2.1 先接入上游传入的 milvus_expr（例如 'chunk_type == "child"'）
+        expr = None
+        user_expr = kwargs.get("milvus_expr")
+        if user_expr:
+            expr = str(user_expr)
+
+        # 2.2 再构建当前检索器的匹配表达式，并与 milvus_expr 通过 && 组合
+        match_expr = self._build_match_expression(query)
+        if expr:
+            expr = f"({expr}) && ({match_expr})"
+        else:
+            expr = match_expr
 
         # 3. 使用Milvus查询
         try:

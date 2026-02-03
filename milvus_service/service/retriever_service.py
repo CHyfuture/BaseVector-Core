@@ -14,6 +14,7 @@ from ability.config import get_settings
 from ability.operators.retrievers.base_retriever import RetrievalResult
 from ability.operators.retrievers.retriever_factory import RetrieverFactory
 from ability.storage.milvus_client import milvus_client
+from ability.utils.filter_validation import validate_milvus_expr
 
 
 settings = get_settings()
@@ -138,6 +139,10 @@ class KeywordSearchRequest(BaseSearchRequest):
         default=None,
         description="额外参数，透传给具体检索器实现",
     )
+    milvus_expr: Optional[str] = Field(
+        default=None,
+        description="额外的 Milvus 过滤表达式，将与关键词条件一起生效，例如 'chunk_type == \"child\"'",
+    )
 
 
 class HybridSearchRequest(BaseSearchRequest):
@@ -155,6 +160,10 @@ class HybridSearchRequest(BaseSearchRequest):
         default=None,
         description="额外参数，例如语义/关键词权重等，透传给具体检索器",
     )
+    milvus_expr: Optional[str] = Field(
+        default=None,
+        description="额外的 Milvus 过滤表达式，将同时作用于语义与关键词子检索，例如 'chunk_type == \"child\"'",
+    )
 
 
 class FulltextSearchRequest(BaseSearchRequest):
@@ -163,6 +172,10 @@ class FulltextSearchRequest(BaseSearchRequest):
     extra_params: Optional[Dict[str, Any]] = Field(
         default=None,
         description="额外参数，透传给具体检索器实现",
+    )
+    milvus_expr: Optional[str] = Field(
+        default=None,
+        description="额外的 Milvus 过滤表达式，将与全文 LIKE 条件一起生效",
     )
 
 
@@ -177,6 +190,10 @@ class TextMatchSearchRequest(BaseSearchRequest):
         default=None,
         description="额外参数，透传给具体检索器实现",
     )
+    milvus_expr: Optional[str] = Field(
+        default=None,
+        description="额外的 Milvus 过滤表达式，将与文本匹配条件一起生效",
+    )
 
 
 class PhraseMatchSearchRequest(BaseSearchRequest):
@@ -185,6 +202,10 @@ class PhraseMatchSearchRequest(BaseSearchRequest):
     extra_params: Optional[Dict[str, Any]] = Field(
         default=None,
         description="额外参数，透传给具体检索器实现",
+    )
+    milvus_expr: Optional[str] = Field(
+        default=None,
+        description="额外的 Milvus 过滤表达式，将与短语匹配条件一起生效",
     )
 
 
@@ -255,6 +276,13 @@ class RetrieverService:
             kwargs["collection_name"] = request.collection_name
         if request.output_fields is not None:
             kwargs["output_fields"] = request.output_fields
+        # 统一处理 milvus_expr（如有该字段）
+        milvus_expr = getattr(request, "milvus_expr", None)
+        if milvus_expr:
+            # 在进入检索器前做一次安全校验
+            validated_expr = validate_milvus_expr(milvus_expr)
+            if validated_expr:
+                kwargs["milvus_expr"] = validated_expr
         return kwargs
     
     @staticmethod
@@ -288,7 +316,6 @@ class RetrieverService:
             {
                 "query_vector": request.query_vector,
                 "anns_field": request.anns_field,
-                "milvus_expr": request.milvus_expr,
             }
         )
 
@@ -308,7 +335,15 @@ class RetrieverService:
 
         kwargs = RetrieverService._build_common_kwargs(request)
         if request.extra_params:
-            kwargs.update(request.extra_params)
+            # 兼容旧用法：extra_params 中的 milvus_expr 仅在未显式设置 request.milvus_expr 时使用
+            extra = dict(request.extra_params)
+            if "milvus_expr" in extra and "milvus_expr" not in kwargs:
+                extra_expr = extra.pop("milvus_expr")
+                if extra_expr:
+                    validated_expr = validate_milvus_expr(extra_expr)
+                    if validated_expr:
+                        kwargs["milvus_expr"] = validated_expr
+            kwargs.update(extra)
 
         results = retriever.process(
             query=request.query,
@@ -332,7 +367,15 @@ class RetrieverService:
             }
         )
         if request.extra_params:
-            kwargs.update(request.extra_params)
+            # 兼容旧用法：extra_params 中的 milvus_expr 仅在未显式设置 request.milvus_expr 时使用
+            extra = dict(request.extra_params)
+            if "milvus_expr" in extra and "milvus_expr" not in kwargs:
+                extra_expr = extra.pop("milvus_expr")
+                if extra_expr:
+                    validated_expr = validate_milvus_expr(extra_expr)
+                    if validated_expr:
+                        kwargs["milvus_expr"] = validated_expr
+            kwargs.update(extra)
 
         results = retriever.process(
             query=request.query,
@@ -350,7 +393,15 @@ class RetrieverService:
 
         kwargs = RetrieverService._build_common_kwargs(request)
         if request.extra_params:
-            kwargs.update(request.extra_params)
+            # 兼容旧用法：extra_params 中的 milvus_expr 仅在未显式设置 request.milvus_expr 时使用
+            extra = dict(request.extra_params)
+            if "milvus_expr" in extra and "milvus_expr" not in kwargs:
+                extra_expr = extra.pop("milvus_expr")
+                if extra_expr:
+                    validated_expr = validate_milvus_expr(extra_expr)
+                    if validated_expr:
+                        kwargs["milvus_expr"] = validated_expr
+            kwargs.update(extra)
 
         results = retriever.process(
             query=request.query,
@@ -370,7 +421,15 @@ class RetrieverService:
 
         kwargs = RetrieverService._build_common_kwargs(request)
         if request.extra_params:
-            kwargs.update(request.extra_params)
+            # 兼容旧用法：extra_params 中的 milvus_expr 仅在未显式设置 request.milvus_expr 时使用
+            extra = dict(request.extra_params)
+            if "milvus_expr" in extra and "milvus_expr" not in kwargs:
+                extra_expr = extra.pop("milvus_expr")
+                if extra_expr:
+                    validated_expr = validate_milvus_expr(extra_expr)
+                    if validated_expr:
+                        kwargs["milvus_expr"] = validated_expr
+            kwargs.update(extra)
 
         results = retriever.process(
             query=request.query,
@@ -390,7 +449,15 @@ class RetrieverService:
 
         kwargs = RetrieverService._build_common_kwargs(request)
         if request.extra_params:
-            kwargs.update(request.extra_params)
+            # 兼容旧用法：extra_params 中的 milvus_expr 仅在未显式设置 request.milvus_expr 时使用
+            extra = dict(request.extra_params)
+            if "milvus_expr" in extra and "milvus_expr" not in kwargs:
+                extra_expr = extra.pop("milvus_expr")
+                if extra_expr:
+                    validated_expr = validate_milvus_expr(extra_expr)
+                    if validated_expr:
+                        kwargs["milvus_expr"] = validated_expr
+            kwargs.update(extra)
 
         results = retriever.process(
             query=request.query,
