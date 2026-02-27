@@ -65,7 +65,6 @@ class MinerUParser(BaseParser):
         """
         递归地在嵌套的字典或列表中查找 'md_content' 的值
         """
-        print(data)
         if isinstance(data, dict):
             if "md_content" in data:
                 content = data["md_content"]
