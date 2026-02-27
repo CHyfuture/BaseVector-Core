@@ -111,6 +111,31 @@ class Settings(BaseSettings):
     # parent_child: 基于父子关系切分，适合层次化文档
     CHUNK_STRATEGY: str = "parent_child"
 
+    # ==================== 文档解析配置（MinerU / LibreOffice） ====================
+    # 是否启用 MinerU 解析（PDF/Word/PPT 等）
+    # True: 使用 MinerU API 解析，非 PDF 先经 LibreOffice 转为 PDF 再解析，返回 Markdown
+    # False: 使用内置解析器（PyMuPDF / python-docx / python-pptx）
+    MINERU_ENABLED: bool = True
+
+    # MinerU 服务地址（例如 http://localhost:8000）
+    MINERU_URL: str = "http://192.168.1.5:8000"
+
+    # MinerU 解析后端（按 MinerU 文档配置，如 "pdf"）
+    MINERU_BACKEND: str = "pdf"
+
+    # MinerU 解析方法（按 MinerU 文档配置）
+    MINERU_PARSE_METHOD: str = "auto"
+
+    # MinerU 调用锁等待超时（秒），避免并发打满服务
+    MINERU_LOCK_TIMEOUT: int = 3600
+    MINERU_LOCK_WAIT_TIMEOUT: int = 600
+
+    # MinerU API 请求超时（秒）
+    MINERU_REQUEST_TIMEOUT: int = 3000
+
+    # LibreOffice 转 PDF 命令超时（秒）
+    LIBREOFFICE_CONVERT_TIMEOUT: int = 3000
+
     # ==================== 检索配置 ====================
     # 检索结果数量（Top-K）
     # 每次检索返回的最相关文档数量
@@ -255,6 +280,26 @@ class Settings(BaseSettings):
                             flat.setdefault("MILVUS_NPROBE", sv["nprobe"])
                     if "collection_template" in mv:
                         flat.setdefault("MILVUS_COLLECTION_TEMPLATE", mv["collection_template"])
+
+                # mineru / 文档解析
+                mineru = data.get("mineru") or data.get("parsers")
+                if isinstance(mineru, dict):
+                    if "enabled" in mineru:
+                        flat.setdefault("MINERU_ENABLED", mineru["enabled"])
+                    if "url" in mineru:
+                        flat.setdefault("MINERU_URL", mineru["url"])
+                    if "backend" in mineru:
+                        flat.setdefault("MINERU_BACKEND", mineru["backend"])
+                    if "parse_method" in mineru:
+                        flat.setdefault("MINERU_PARSE_METHOD", mineru["parse_method"])
+                    if "lock_timeout" in mineru:
+                        flat.setdefault("MINERU_LOCK_TIMEOUT", mineru["lock_timeout"])
+                    if "lock_wait_timeout" in mineru:
+                        flat.setdefault("MINERU_LOCK_WAIT_TIMEOUT", mineru["lock_wait_timeout"])
+                    if "request_timeout" in mineru:
+                        flat.setdefault("MINERU_REQUEST_TIMEOUT", mineru["request_timeout"])
+                    if "libreoffice_convert_timeout" in mineru:
+                        flat.setdefault("LIBREOFFICE_CONVERT_TIMEOUT", mineru["libreoffice_convert_timeout"])
 
             return flat
 

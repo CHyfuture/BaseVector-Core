@@ -9,15 +9,17 @@ from ability.operators.parsers.base_parser import BaseParser
 from ability.operators.parsers.docx_parser import DocxParser
 from ability.operators.parsers.html_parser import HTMLParser
 from ability.operators.parsers.markdown_parser import MarkdownParser
+from ability.operators.parsers.mineru_parser import MinerUParser
 from ability.operators.parsers.pdf_parser import PDFParser
 from ability.operators.parsers.pptx_parser import PPTXParser
 from ability.operators.parsers.txt_parser import TXTParser
 from ability.operators.plugin_registry import PluginRegistry
 from ability.utils.logger import logger
 
-settings = get_settings()
+# 可由 MinerU 解析的格式（启用时优先使用 MinerUParser）
+MINERU_EXTENSIONS = {".pdf", ".doc", ".docx", ".ppt", ".pptx"}
 
-# 内置解析器映射
+# 内置解析器映射（MinerU 未启用时使用）
 BUILTIN_PARSER_REGISTRY: Dict[str, type[BaseParser]] = {
     ".pdf": PDFParser,
     ".docx": DocxParser,
@@ -30,6 +32,17 @@ BUILTIN_PARSER_REGISTRY: Dict[str, type[BaseParser]] = {
     ".markdown": MarkdownParser,
     ".txt": TXTParser,
 }
+
+
+def _get_builtin_parsers() -> Dict[str, type[BaseParser]]:
+    """根据 MINERU_ENABLED 返回实际使用的内置解析器映射。"""
+    settings = get_settings()
+    if getattr(settings, "MINERU_ENABLED", True):
+        reg = dict(BUILTIN_PARSER_REGISTRY)
+        for ext in MINERU_EXTENSIONS:
+            reg[ext] = MinerUParser
+        return reg
+    return BUILTIN_PARSER_REGISTRY
 
 
 class ParserFactory:
@@ -54,7 +67,7 @@ class ParserFactory:
         extension = file_path.suffix.lower()
 
         # 合并内置和插件注册表
-        all_parsers = {**BUILTIN_PARSER_REGISTRY, **PluginRegistry.get_parsers()}
+        all_parsers = {**_get_builtin_parsers(), **PluginRegistry.get_parsers()}
 
         if extension not in all_parsers:
             raise ValueError(
@@ -77,7 +90,7 @@ class ParserFactory:
         Returns:
             扩展名列表
         """
-        all_parsers = {**BUILTIN_PARSER_REGISTRY, **PluginRegistry.get_parsers()}
+        all_parsers = {**_get_builtin_parsers(), **PluginRegistry.get_parsers()}
         return list(all_parsers.keys())
 
     @staticmethod
@@ -92,5 +105,5 @@ class ParserFactory:
             是否支持
         """
         file_path = Path(file_path)
-        all_parsers = {**BUILTIN_PARSER_REGISTRY, **PluginRegistry.get_parsers()}
+        all_parsers = {**_get_builtin_parsers(), **PluginRegistry.get_parsers()}
         return file_path.suffix.lower() in all_parsers

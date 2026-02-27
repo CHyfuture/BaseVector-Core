@@ -21,7 +21,8 @@ BaseVector-Core 是一个**纯 Python SDK**，围绕 Milvus 向量数据库，�
 
 - **文档解析能力**
   - 支持格式：`PDF / DOCX / PPTX / HTML / Markdown / TXT`
-  - 输出：纯文本内容 + 元数据（标题、作者、页码、结构信息等）
+  - 当 **MinerU 启用**（`MINERU_ENABLED=True`，默认）时：PDF / Word / PPT 由 **MinerU** 统一解析为 **Markdown**（Word/PPT 先经 **LibreOffice** 转为 PDF 再解析）；未部署 MinerU 时可关闭，回退到内置解析器（PyMuPDF / python-docx / python-pptx）。
+  - 输出：纯文本内容（或 Markdown）+ 元数据（标题、作者、页码、结构信息等）
   - 入口：`ParserService.parse(ParseRequest)`
 
 - **文档切片能力**
@@ -111,6 +112,7 @@ BaseVector-Core/
 
 - Milvus 连接信息：`MILVUS_HOST / MILVUS_PORT / MILVUS_USER / MILVUS_PASSWORD / MILVUS_DB_NAME`
 - Milvus 索引/搜索参数：`MILVUS_INDEX_TYPE / MILVUS_METRIC_TYPE / MILVUS_NLIST / MILVUS_NPROBE`
+- 文档解析（MinerU / LibreOffice）：`MINERU_ENABLED / MINERU_URL / MINERU_BACKEND / MINERU_PARSE_METHOD / MINERU_REQUEST_TIMEOUT / LIBREOFFICE_CONVERT_TIMEOUT` 等（见下方说明）
 - 检索参数：`TOP_K / RERANK_ENABLED / RERANK_MODEL_NAME / SIMILARITY_THRESHOLD / RETRIEVAL_CANDIDATE_MULTIPLIER`
 - 切片参数：`CHUNK_SIZE / CHUNK_OVERLAP / CHUNK_STRATEGY`
 - 多租户：`ENABLE_MULTI_TENANT / DEFAULT_TENANT_ID`
@@ -139,7 +141,28 @@ MILVUS_NPROBE=10
 KEYWORD_FTS_LANGUAGE=simple
 ```
 
+可选：启用 MinerU 解析 PDF/Word/PPT 时，可配置（不配则使用默认值）：
+
+```env
+MINERU_ENABLED=true
+MINERU_URL=http://localhost:8000
+MINERU_BACKEND=pdf
+MINERU_PARSE_METHOD=auto
+MINERU_REQUEST_TIMEOUT=3000
+LIBREOFFICE_CONVERT_TIMEOUT=3000
+```
+
+> 未部署 MinerU 或 LibreOffice 时，将 `MINERU_ENABLED=false` 即可回退到内置解析器。
+
 然后在代码中**不需要做任何额外操作**，所有 Service 会自动使用这套默认配置。
+
+#### 文档解析（MinerU / LibreOffice）配置说明
+
+- **`MINERU_ENABLED`**：是否使用 MinerU 解析 PDF/Word/PPT（默认 `True`）。为 `False` 时使用内置解析器（PyMuPDF、python-docx、python-pptx）。
+- **`MINERU_URL`**：MinerU 服务地址，如 `http://localhost:8000`。
+- **`MINERU_BACKEND`** / **`MINERU_PARSE_METHOD`**：MinerU 解析后端与解析方法，按 MinerU 服务文档配置。
+- **`MINERU_REQUEST_TIMEOUT`**：调用 MinerU API 的超时时间（秒）。
+- **`LIBREOFFICE_CONVERT_TIMEOUT`**：Word/PPT 经 LibreOffice 转 PDF 时的命令超时（秒）。使用 MinerU 解析 Word/PPT 时，运行环境需安装 LibreOffice（`libreoffice` 命令）。
 
 #### 检索模块典型配置说明（对应上面的字段）
 
@@ -404,6 +427,7 @@ if __name__ == "__main__":
 
 - **对应 Service**：`ParserService`
 - **推荐调用入口**：`ParserService.parse(ParseRequest)`
+- **解析策略**：当配置 `MINERU_ENABLED=True`（默认）时，对 PDF / Word / PPT 使用 **MinerUParser**（Word/PPT 先由 LibreOffice 转为 PDF，再统一经 MinerU 解析为 Markdown）；否则使用内置的 PDFParser、DocxParser、PPTXParser。HTML / Markdown / TXT 始终使用内置解析器。
 
 ```python
 from milvus_service import ParserService, ParseRequest
@@ -416,7 +440,7 @@ req = ParseRequest(
     },
 )
 res = ParserService.parse(req)
-print(res.content)   # 解析后的纯文本
+print(res.content)   # 解析后的纯文本（或 MinerU 返回的 Markdown）
 print(res.metadata)  # 元数据
 ```
 
