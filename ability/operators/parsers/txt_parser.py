@@ -19,7 +19,7 @@ class TXTParser(BaseParser):
         """
         super().__init__(config)
         # 支持带点和不带点的扩展名格式
-        self.supported_extensions = [".txt", "txt"]
+        self.supported_extensions = [".txt", "txt",".json"]
 
     def _initialize(self) -> None:
         """初始化TXT解析器"""
