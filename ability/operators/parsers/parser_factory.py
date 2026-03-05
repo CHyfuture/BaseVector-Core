@@ -31,6 +31,7 @@ BUILTIN_PARSER_REGISTRY: Dict[str, type[BaseParser]] = {
     ".md": MarkdownParser,
     ".markdown": MarkdownParser,
     ".txt": TXTParser,
+    ".json": TXTParser,
 }
 
 
