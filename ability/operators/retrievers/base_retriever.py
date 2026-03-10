@@ -189,22 +189,44 @@ class BaseRetriever(BaseOperator):
 
             try:
                 if use_jina_listwise:
-                    from transformers import AutoModel
+                    from transformers import AutoConfig, AutoModel
 
                     load_kwargs = {
                         "trust_remote_code": True,
                         "local_files_only": local_only,
                     }
+                    config_kwargs = dict(load_kwargs)
+                    try:
+                        config = AutoConfig.from_pretrained(
+                            model_name_or_path,
+                            **config_kwargs,
+                        )
+                    except TypeError:
+                        config_kwargs.pop("local_files_only", None)
+                        config = AutoConfig.from_pretrained(
+                            model_name_or_path,
+                            **config_kwargs,
+                        )
+
+                    if getattr(config, "tie_word_embeddings", None):
+                        # Jina listwise reranker replaces lm_head with Identity.
+                        # Disable tie weights to avoid AttributeError on lm_head.weight.
+                        config.tie_word_embeddings = False
+
+                    model_kwargs = dict(load_kwargs)
                     try:
                         self.reranker = AutoModel.from_pretrained(
                             model_name_or_path,
-                            dtype="auto",
-                            **load_kwargs,
+                            config=config,
+                            torch_dtype="auto",
+                            **model_kwargs,
                         )
                     except TypeError:
+                        model_kwargs.pop("local_files_only", None)
                         self.reranker = AutoModel.from_pretrained(
                             model_name_or_path,
-                            **load_kwargs,
+                            config=config,
+                            **model_kwargs,
                         )
 
                     if not hasattr(self.reranker, "rerank"):
