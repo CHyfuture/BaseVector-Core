@@ -1,6 +1,8 @@
 """
 检索器基类
 """
+import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from ability.config import get_settings
@@ -29,6 +31,40 @@ RETRIEVAL_OUTPUT_FIELDS: List[str] = [
     "institutions",
     "tags",
 ]
+
+
+def _resolve_model_path_or_id(model_name: str) -> tuple[str, bool]:
+    """
+    Resolve model reference.
+    - Local-like path: convert to absolute path and return local_only=True
+    - Hub model id: return local_only=False
+    """
+    name = (model_name or "").strip()
+    if not name:
+        return name, False
+
+    is_local_like = (
+        name.startswith("workspace/")
+        or name.startswith("workspace\\")
+        or name.startswith("./")
+        or name.startswith(".\\")
+        or os.path.isabs(name)
+        or (len(name) >= 2 and name[1] == ":")
+        or "\\" in name
+    )
+    if not is_local_like:
+        return name, False
+
+    if name.startswith("workspace/") or name.startswith("workspace\\"):
+        root = Path.cwd()
+        resolved = (root / name.replace("\\", "/")).resolve()
+    else:
+        resolved = Path(name).resolve()
+    return str(resolved), True
+
+
+def _is_jina_listwise_reranker(model_name_or_path: str) -> bool:
+    return "jina-reranker-v3" in (model_name_or_path or "").lower()
 
 
 def resolve_output_fields(
@@ -117,6 +153,7 @@ class BaseRetriever(BaseOperator):
         self.rerank_model_name = self.get_config("rerank_model_name", settings.RERANK_MODEL_NAME)
         self.similarity_threshold = self.get_config("similarity_threshold", settings.SIMILARITY_THRESHOLD)
         self.reranker = None
+        self.reranker_backend: Optional[str] = None
 
     def validate_input(self, input_data: Any) -> bool:
         """
@@ -146,20 +183,87 @@ class BaseRetriever(BaseOperator):
         super()._initialize()  # 调用基类的初始化方法
         # 如果启用重排序，初始化重排序模型
         if self.rerank_enabled:
-            try:
-                from sentence_transformers import CrossEncoder
+            model_name_or_path, local_only = _resolve_model_path_or_id(self.rerank_model_name)
+            self.rerank_model_name = model_name_or_path
+            use_jina_listwise = _is_jina_listwise_reranker(model_name_or_path)
 
-                self.reranker = CrossEncoder(self.rerank_model_name)
-                self.logger.info(f"Reranker model '{self.rerank_model_name}' initialized")
-            except ImportError:
-                self.logger.warning(
-                    "sentence-transformers not installed, reranking will be disabled. "
-                    "Install it with: pip install sentence-transformers"
+            try:
+                if use_jina_listwise:
+                    from transformers import AutoModel
+
+                    load_kwargs = {
+                        "trust_remote_code": True,
+                        "local_files_only": local_only,
+                    }
+                    try:
+                        self.reranker = AutoModel.from_pretrained(
+                            model_name_or_path,
+                            dtype="auto",
+                            **load_kwargs,
+                        )
+                    except TypeError:
+                        self.reranker = AutoModel.from_pretrained(
+                            model_name_or_path,
+                            **load_kwargs,
+                        )
+
+                    if not hasattr(self.reranker, "rerank"):
+                        raise ValueError(
+                            f"Reranker model '{model_name_or_path}' has no rerank() method"
+                        )
+                    self.reranker_backend = "jina_listwise"
+                else:
+                    from sentence_transformers import CrossEncoder
+
+                    cross_encoder_kwargs = {
+                        "trust_remote_code": True,
+                        "local_files_only": local_only,
+                    }
+                    try:
+                        self.reranker = CrossEncoder(
+                            model_name_or_path,
+                            **cross_encoder_kwargs,
+                        )
+                    except TypeError:
+                        cross_encoder_kwargs.pop("local_files_only", None)
+                        self.reranker = CrossEncoder(
+                            model_name_or_path,
+                            **cross_encoder_kwargs,
+                        )
+
+                    tokenizer = getattr(self.reranker, "tokenizer", None)
+                    if (
+                        tokenizer is not None
+                        and tokenizer.pad_token_id is None
+                        and tokenizer.eos_token is not None
+                    ):
+                        tokenizer.pad_token = tokenizer.eos_token
+
+                    self.reranker_backend = "cross_encoder"
+
+                self.logger.info(
+                    f"Reranker model '{model_name_or_path}' initialized "
+                    f"(backend={self.reranker_backend}, local_only={local_only})"
                 )
+            except ImportError:
+                if use_jina_listwise:
+                    self.logger.warning(
+                        "transformers not installed, reranking will be disabled. "
+                        "Install it with: pip install transformers"
+                    )
+                else:
+                    self.logger.warning(
+                        "sentence-transformers not installed, reranking will be disabled. "
+                        "Install it with: pip install sentence-transformers"
+                    )
                 self.rerank_enabled = False
+                self.reranker = None
+                self.reranker_backend = None
             except Exception as e:
                 self.logger.warning(f"Failed to initialize reranker model: {str(e)}, reranking will be disabled")
                 self.rerank_enabled = False
+                self.reranker = None
+                self.reranker_backend = None
 
     def process(
         self,
@@ -314,15 +418,47 @@ class BaseRetriever(BaseOperator):
 
         try:
             # 准备重排序的输入对：[(query, content1), (query, content2), ...]
+            if self.reranker_backend == "jina_listwise":
+                documents = [result.content for result in results]
+                ranked_items = self.reranker.rerank(
+                    query=query,
+                    documents=documents,
+                    top_n=min(top_k, len(documents)),
+                )
+
+                reranked_results: List[RetrievalResult] = []
+                for item in ranked_items:
+                    if not isinstance(item, dict):
+                        continue
+                    index = item.get("index")
+                    if not isinstance(index, int) or index < 0 or index >= len(results):
+                        continue
+
+                    result = results[index]
+                    if "relevance_score" in item:
+                        result.score = float(item["relevance_score"])
+                    reranked_results.append(result)
+
+                if reranked_results:
+                    return reranked_results[:top_k]
+                return results[:top_k]
+
             pairs = [(query, result.content) for result in results]
 
             # 执行重排序（批量处理）
-            rerank_scores = self.reranker.predict(pairs)
+            try:
+                rerank_scores = self.reranker.predict(pairs)
+            except Exception as e:
+                error_message = str(e).lower()
+                if "batch sizes > 1" in error_message and "no padding token" in error_message:
+                    rerank_scores = self.reranker.predict(pairs, batch_size=1)
+                else:
+                    raise
 
             # 更新结果分数
-            for i, result in enumerate(results):
+            for result, rerank_score in zip(results, rerank_scores):
                 # 重排序分数通常是相关性分数，直接使用
-                result.score = float(rerank_scores[i])
+                result.score = float(rerank_score)
 
             # 按新分数排序
             results.sort(key=lambda x: x.score, reverse=True)
