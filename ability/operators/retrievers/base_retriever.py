@@ -291,7 +291,6 @@ class BaseRetriever(BaseOperator):
         self,
         query: str,
         top_k: Optional[int] = None,
-        tenant_id: Optional[str] = None,
         **kwargs,
     ) -> List[RetrievalResult]:
         """
@@ -300,7 +299,6 @@ class BaseRetriever(BaseOperator):
         Args:
             query: 查询文本
             top_k: 返回Top-K结果
-            tenant_id: 租户ID（用于过滤）
             **kwargs: 额外的检索参数
                 - rerank_enabled: 是否启用重排序（覆盖配置）
                 - similarity_threshold: 相似度阈值（覆盖配置）
@@ -321,7 +319,7 @@ class BaseRetriever(BaseOperator):
         candidate_k = top_k * candidate_multiplier if rerank_enabled else top_k
 
         # 执行检索
-        results = self._retrieve(query, candidate_k, tenant_id, **kwargs)
+        results = self._retrieve(query, candidate_k, "1", **kwargs)
 
         # 归一化分数到 [0, 1] 区间
         if results:
