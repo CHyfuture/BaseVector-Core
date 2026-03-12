@@ -80,6 +80,7 @@ class KeywordRetriever(BaseRetriever):
         return score
 
     def _retrieve(
+        self,
         query: str,
         top_k: int,
         tenant_id: Optional[str],
